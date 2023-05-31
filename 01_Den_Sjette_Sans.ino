@@ -12,7 +12,7 @@ const unsigned long grenseTid = 900 * 1000;         // hvis bruker ikke sitter v
                                                         // Angis i sekunder * 1000 (for å gjøre om til millisekunder)
 
 // Pins til reed switcher
-const int reed1 = 20;                               // kobles til pins med interrupt funksjon (pin 2, 3, 18, 19, 20, 21 på arduino mega)  (KILDE HER!!!!!!)    
+const int reed1 = 20;                               // kobles til pins med interrupt funksjon     
 const int reed2 = 21;       
 const int reed3 = 2; 
 
