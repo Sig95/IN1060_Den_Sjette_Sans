@@ -1,63 +1,54 @@
+// Den Sjette Sans
+// av Andrea Rye, Marthe Seth, Lara Silberhorn, Sigrid Strand Stiberg, Pernille Vannebo og Hanna Karsrud
 
-const int triggerPin = 50; // ulytasonisk sensor, trigger pin. gul ledning
-const int echoPin = 52;    // ultrasonisk sensor, echo pin. rød/oransje ledning
-long etappeTid;           // tiden det tar for den ultrasoniske bølgen å gå fra trigger til echo
-int avstand;              // avstand (i cm) US sensor måler
+// Pins til ultrasonisk sensor
+const int triggerPin = 50;                          // sender ut signal
+const int echoPin = 52;                             // tar imot signal
+long etappeTid;                                     // tiden det tar for den ultrasoniske bølgen å gå fra trigger til echo
+int avstand;                                        // avstand (i cm)som sensor måler
+const int grenseAvstand = 80;                       // avstand i cm. Om ultrasonisk sensor detekterer avstand større enn dette, settes eget rgb lys til hvitt
+unsigned long startTid;                             // settes til millis() i det US sensor måler lengre avstand enn grenseAvstand
+const unsigned long grenseTid = 900 * 1000;         // hvis bruker ikke sitter ved pulten etter grenseTid, vil status automatisk settes til "ikke tilstede". 
+                                                        // Angis i sekunder * 1000 (for å gjøre om til millisekunder)
 
-// reed switch variabler settes til pins med interrupt funksjon (pin: 2, 3, 18, 19, 20, 21 på arduino mega)
-const int reed1 = 20;       
+// Pins til reed switcher
+const int reed1 = 20;                               // kobles til pins med interrupt funksjon (pin 2, 3, 18, 19, 20, 21 på arduino mega)  (KILDE HER!!!!!!)    
 const int reed2 = 21;       
 const int reed3 = 2; 
 
-// egenRGB
+// Pins egen RGB-led
 const int r_egen = 4;
 const int g_egen = 5;
 const int b_egen = 6;
-int statuskode;                 // endres når reed switchene trigges,  1:opptatt   2:samarbeid   3:pause  
+int statuskode;                                     // holder styr på brukers egen status,  1=opptatt   2=samarbeid   3=pause  
 
-const unsigned long opptattPaaminnelse = 1800000; //Hvis brukeren har på rød i 30 min sammenhengende, vil hen få en påminnelse om dette i form av pulsering av LED 
-unsigned long startTidOpptatt = 0; // tidspunkt når bruker plasserer magnet på opptatt-status
-bool reed1_state = true; // holder styring på om opptatt reed har magnet på seg eller ikke
+const unsigned long opptattPaaminnelse = 1800000;   // hvor lenge det skal gå før bruker får påminnelse om at de har statusen sin på opptatt 
+unsigned long startTidOpptatt = 0;                  // tidspunkt når bruker plasserer magnet på opptatt-status
 
-// grense-variabler
-const unsigned long grenseTid = 900 * 1000; // tid før system automatisk setter status "ikke tilstede". Angi i sekunder * 1000 (for å gjøre om til millisekunder)
-const int grenseAvstand = 80;   // avstand i cm. Om ultrasonisk sensor detekterer avstand større enn dette, settes eget rgb lys til hvitt
-
-// variabler for tid
-unsigned long startTid;
-
-// anode
+// Pins til de 3 rgb ledene som representerer team-medlemmer. Navn nord, sor og vest korresponderer med plasseringer deres på artefakten
 const int r_nord = A2;
 const int g_nord = A1;
 const int b_nord = A0;
-
-// katode
 const int r_sor = A3;
 const int g_sor = A5;
 const int b_sor = A4;
-
-// katode
 const int r_vest = A8;
 const int g_vest = A6;
 const int b_vest = A7;
 
-unsigned long tidSkiftetFarge = millis();
-const unsigned long rgb_grensetid = 8 * 1000;
-
-int teller = 0;
-int forrigeRGB = 1;
-bool bytte = true; // tid før rgb lys bytter farge
+unsigned long tidSkiftetFarge = millis();         // tidspunkt når en av rgb ledene skiftet farge sist
+const unsigned long rgb_grensetid = 8 * 1000;     // lengde tid før ny rgb led skal skifte farge
+int teller = 0;                                   // teller for fargemonster array i skiftFarge() metode
+int forrigeRGB = 1;                               // holder styr på  hvilken rgb som byttet farge siste
 
 void setup() {
-  // sjekker om magneten er plassert på en reed switch. Hvis ja, så settes statuskode til korresponderende tall 
-  avgjorEgenStatus();
-
   pinMode(triggerPin, OUTPUT);
   pinMode(echoPin, INPUT);
   pinMode(reed1, INPUT_PULLUP);
   pinMode(reed2, INPUT_PULLUP);
   pinMode(reed3, INPUT_PULLUP);
-  // om en av reed switchene aktiveres, vil programmet automatisk hoppe til korresponderende funksjon og utføre dette
+  // om en av reed switchene aktiveres, vil programmet automatisk hoppe til korresponderende
+  // funksjon (settOpptatt, settSamarbeid eller settPause) og utføre dette
   attachInterrupt(digitalPinToInterrupt(reed1), settOpptatt, CHANGE);
   attachInterrupt(digitalPinToInterrupt(reed2), settSamarbeid, CHANGE);
   attachInterrupt(digitalPinToInterrupt(reed3), settPause, CHANGE);
@@ -66,57 +57,37 @@ void setup() {
   pinMode(g_egen, OUTPUT);
   pinMode(b_egen, OUTPUT);
   
-  const int r_nord = A2;
-const int g_nord = A1;
-const int b_nord = A0;
-
-// katode
-const int r_sor = A3;
-const int g_sor = A5;
-const int b_sor = A4;
-
-// katode
-const int r_vest = A8;
-const int g_vest = A6;
-const int b_vest = A7;
-
+  //Kode som skal utføres kun 1 gang (ved oppstart)
+  // sjekker om magneten er plassert på en reed switch. Hvis ja, så settes statuskode til korresponderende tall 
+  avgjorEgenStatus();
+  //setter rgb lysene til å lyse
+  skiftFargeVestSor(1, r_sor, g_sor, b_sor);
+  skiftFargeVestSor(3, r_vest, g_vest, b_vest);
+  skiftFargeNord(4, r_nord, g_nord, b_nord);
 }
 
 void loop() {
+  // endrer statuslys basert på verdien til statuskode
   settEgenStatus();
+  // ultrasonisk sensor trigges og måler avstand
   trigUltrasoniskSensor();
+  // sjekker om bruker er tilstede eller ikke
   sjekkTilstedevaerelse();
 
-
-  //sjekker om bruker har hatt status opptatt X antall tid. Hvis ja, starter pulsering.
-    if ((millis() - startTidOpptatt) > opptattPaaminnelse){
-      pulsering();
-    }
-  
-  
-  if((millis() - tidSkiftetFarge) > rgb_grensetid){
-    if(bytte){
-      analogWrite(r_nord, 255);
-      analogWrite(g_nord, 0);
-      analogWrite(b_nord, 255);
-      bytte = false;
-      tidSkiftetFarge = millis();
-    }
-    else{
-      analogWrite(r_nord, 0);
-      analogWrite(g_nord, 255);
-      analogWrite(b_nord, 255);
-      bytte = true;
-      tidSkiftetFarge = millis();
-      
-    }
-
-    
-  } 
-  
+  //sjekker om bruker har hatt magnet på "opptatt" over grensetiden. Hvis ja, starter pulsering.
+  if ((millis() - startTidOpptatt) > opptattPaaminnelse){
+    pulsering();
+  }
+  // sjekker om det har gått mer tid enn grensetiden, siden siste en rgb led skiftet farge. 
+  //Hvis ja, skifter farge og oppdaterer tiden dette skjedde
+  if((millis() - tidSkiftetFarge) >= rgb_grensetid){
+    skiftFarge();
+    tidSkiftetFarge = millis();
+  }
 }
 
-
+// De tre "sett"-metodene blir aktivert ved hjelp av interrupt funksjonaliteten på arduino brettet. Når en av de trigges, 
+// sjekkes reed-swtichen sin status, statuskoden oppdateres og settEgenStatus() blir kallt på for å oppdatere lyset
 void settOpptatt(){
   if(digitalRead(reed1) == LOW){
     statuskode = 1;
@@ -147,33 +118,24 @@ void settPause(){
   settEgenStatus();  
 }
 
+// metoden sjekker statuskoden og endrer brukerens rgb led til riktig farge
+// startTidOpptatt oppdateres til nåværende tid hvis statusen endres til opptatt, mens den nullstilles
+// hvis statusen endres til noe annet
 void settEgenStatus(){
   // opptatt - rød
   if(statuskode == 1){      
     analogWrite(r_egen, 0);
     analogWrite(g_egen, 255);
     analogWrite(b_egen, 255);
-
-   
-
-
-
-    if(reed1_state && startTidOpptatt == 0){
+    if(startTidOpptatt == 0){
       startTidOpptatt = millis();
-      reed1_state = false;
     }
-    else{
-      reed1_state = true;
-    }
-
   }
   // samarbeid - gul
   else if(statuskode == 2){
     analogWrite(r_egen, 0);
     analogWrite(g_egen, 0);
     analogWrite(b_egen, 255);
-
-
     startTidOpptatt = 0;
   }
   // pause - blå
@@ -181,20 +143,14 @@ void settEgenStatus(){
     analogWrite(r_egen, 255);
     analogWrite(g_egen, 255);
     analogWrite(b_egen, 0);
-
-    
-
     startTidOpptatt = 0;
   }
+  // tilstede - grønn
   else if (statuskode == 0){
     analogWrite(r_egen, 255);
     analogWrite(g_egen, 0);
     analogWrite(b_egen, 255);
-
-    
-    //nullstiller startTidOpptatt
     startTidOpptatt = 0;
-
   }
   // ikke tilstede - hvit
   else if (statuskode == 4){
@@ -206,7 +162,12 @@ void settEgenStatus(){
 
 
 void trigUltrasoniskSensor(){
-  //US måler lengde
+  // koden er basert på kode eksempelet på arduino sine nettsider
+  /************************************************************************
+  * Tittel: Ping Ultrasonic Range Finder
+  * Dato: 16.05.2023
+  * Lenke: https://docs.arduino.cc/built-in-examples/sensors/Ping 
+  /************************************************************************/
   digitalWrite(triggerPin, LOW);
   delayMicroseconds(2);
   digitalWrite(triggerPin, HIGH);
@@ -230,7 +191,8 @@ void sjekkTilstedevaerelse(){
     startTid = millis();
     avgjorEgenStatus();
   }
-  // hvis timer har startet og tidsgrensen er passert, skru på LED
+  // hvis timer har startet og tidsgrensen er passert, sett egen status til ikke tilstede 
+  // og sjekk at avstanden ikke er endret (om personen har kommet tilbake igjen f.eks.)
   else if (startTid > 0 && (millis() - startTid) >= grenseTid){
     while(avstand > grenseAvstand){
       statuskode = 4;
@@ -242,6 +204,8 @@ void sjekkTilstedevaerelse(){
   settEgenStatus();
 }
 
+// forskjellen på settEgenStatus() og avgjorEgenStatus er at førstnevnte endrer lyset basert på statuskoden, 
+// mens sistenevnte endrer statuskode (ikke lysene) basert på lesing fra reed1 switchen. 
 void avgjorEgenStatus(){
   if(digitalRead(reed1) == LOW){
     statuskode = 1;
@@ -258,6 +222,13 @@ void avgjorEgenStatus(){
 }
 
 void pulsering(){
+  // koden er basert på tutorialen funnet på Sparkfun sine nettsider
+  /************************************************************************
+  * Tittel: Pulse a LED
+  * Forfatter: MikeGrusin
+  * Dato: 31.10.2011
+  * Lenke: https://www.sparkfun.com/tutorials/329
+  /************************************************************************/
   float in, out;
   while(digitalRead(reed1) == LOW){
     for (in = 0; in < 6.283; in = in + 0.001){
@@ -269,38 +240,49 @@ void pulsering(){
   }
   // nullstiller timer
   startTidOpptatt = 0;
-
 }
 
+// metoden for å simulere at andre teammedlemmer endrer sin status.
+// metoden itererer gjennom et array med tallverdier (som representerer farger) og for hver gang et RGB lys skifter farge
+// blir forrigeRGB variabelen endret. På denne måten varierer det både hvilken RGB led som bytter farge, og hvilken farge
+// det byttes til
+
 void skiftFarge(){
-  // rgb led variabel    1 = nord    2 = sor     3=vest
   int fargemonster[] = {
-    1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4};
-  // global variabel int teller = 0;
-  while(teller < 11){
-    
+    // kolonne 1 er rgb sor sitt lysmønster, kol 2 = rgb vest, kol 3 = rgb nord
+    1, 3, 4, 
+    2, 1, 3, 
+    3, 3, 2, 
+    4, 1, 3};
+
+    // hvis forrigeRGB var nord, bytt farge på sør og oppdatert forrigeRGB til sør
     if(forrigeRGB == 1){
       forrigeRGB = 2;
-      
       skiftFargeVestSor(fargemonster[teller], r_sor, g_sor, b_sor);
       teller++;
     }
+    // hvis forrigeRGB var sør, bytt farge på vest og oppdatert forrigeRGB til vest
     else if(forrigeRGB == 2){
       forrigeRGB = 3;
       skiftFargeVestSor(fargemonster[teller], r_vest, g_vest, b_vest);
       teller++;
     }
+    // hvis forrigeRGB var vest, bytt farge på nord og oppdatert forrigeRGB til nord
     else if(forrigeRGB == 3){
       forrigeRGB = 1;
       skiftFargeNord(fargemonster[teller], r_nord, g_nord, b_nord);
       teller++;
     }
+  // nullstiller teller når fargermønsteret har iterert gjennom fargermonster arrayet 
+  if (teller >= 11){
+    teller = 0;
   }
-  teller = 0;
+  // oppdatert tiden når siste farge-skifte har skjedd
   tidSkiftetFarge = millis();
 }
 
-
+// metode endrer farge på RGB basert på fargekoden og pin nummer
+// siden to av RGB-ledene (vest og sor) er "common cathode", så har de andre fargekoder enn RGB nord (se egen skiftFargeNord funsjon)
 void skiftFargeVestSor(int fargekode, int r, int g, int b){
   // 1: rød    2: gul    3: blå     4: grønn
   if(fargekode == 1){
@@ -325,6 +307,7 @@ void skiftFargeVestSor(int fargekode, int r, int g, int b){
   }
 }
 
+// metode endrer farge på RGB basert på fargekoden og pin nummer
 void skiftFargeNord(int fargekode, int r, int g, int b){
   // 1: rød    2: gul    3: blå     4: grønn
   if(fargekode == 1){
